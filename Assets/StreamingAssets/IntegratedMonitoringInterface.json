@@ -1,0 +1,182 @@
+{
+	"7_GC5":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10000
+	},
+	"7_LLC16":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10001
+	},
+	"7_LLC17":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10002
+	},
+	"7_TC1":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10003
+	},
+	"7_TC2":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10004
+	},
+	"7_TC4":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10005
+	},
+	"7_TC5":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10006
+	},
+	"7_TC6":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10007
+	},
+	"J_LLC24":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10010
+	},
+	"J_LLC11":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10011
+	},
+	"J_LLC8":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10012
+	},
+	"J_LLC9":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10013
+	},
+	"K_JIB1":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10020
+	},
+	"K_JIB2":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10021
+	},
+	"K_JIB3":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10022
+	},
+	"K_TTC23":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10023
+	},
+	"K_LLC18":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10024
+	},
+	"K_LLC19":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10025
+	},
+	"HAN_GC1":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10030
+	},
+	"HAN_GC2":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10031
+	},
+	"HAN_TC1":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10032
+	},
+	"HAN_TC2":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10033
+	},
+	"HAN_TC3":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10034
+	},
+	"HAN_TTC4":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10035
+	},
+	"HAN_TC5":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10036
+	},
+	"HAN_TC6":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10037
+	},
+	"6_LLC7":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10040
+	},
+	"6_LLC23":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10041
+	},
+	"G2_LLC12":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10050
+	},
+	"G2_LLC13":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10051
+	},
+	"G3_LLC19":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10060
+	},
+	"G3_LLC20":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10061
+	},
+	"G4_LLC25":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10070
+	},
+	"G4_LLC26":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10071
+	},
+	"Z_LLC16":	{
+		"routerIP":	"192.168.0.87",
+		"routerPort":	10080
+	},
+	"Y_TC1":	{
+		"routerIP":	"192.168.0.88",
+		"routerPort":	10090
+	},
+	"Y_JIB1":	{
+		"routerIP":	"192.168.0.88",
+		"routerPort":	10091
+	},
+	"Y_JIB2":	{
+		"routerIP":	"192.168.0.88",
+		"routerPort":	10092
+	},
+	"Y_JIB3":	{
+		"routerIP":	"192.168.0.14",
+		"routerPort":	10093
+	},
+	"Y_JIB4":	{
+		"routerIP":	"192.168.0.14",
+		"routerPort":	10094
+	},
+	"Y_JIB5":	{
+		"routerIP":	"192.168.0.15",
+		"routerPort":	10095
+	},
+	"integratedMonitoringUnity":	{
+		"IP":	"127.0.0.1"
+	},
+	"DB":	{
+		"IP":	"192.168.0.87",
+		"Port":	27017
+	},
+	"Test":	{
+		"ColorMode":	0,
+		"bRemoveCranePoint":	1,
+		"R":	0,
+		"G":	192,
+		"B":	0,
+		"MinHeight":	14,
+		"MaxHeight":	200
+	}
+}
