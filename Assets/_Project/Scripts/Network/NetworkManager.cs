@@ -1,169 +1,209 @@
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO;
+using System.Net.Sockets;
+using System.Threading;
 using UnityEngine;
-using Newtonsoft.Json; // 패키지 설치 필요
+using Network;
 
-namespace Network
+public class NetworkManager : MonoBehaviour
 {
-    public class NetworkManager : MonoBehaviour
+    public static NetworkManager Instance { get; private set; }
+
+    [Header("Connection Settings")]
+    [SerializeField] private string serverIp = "127.0.0.1";
+    [SerializeField] private int serverPort = 15000;
+
+    private TcpClient client;
+    private NetworkStream stream;
+    private Thread receiveThread;
+    private bool isRunning;
+
+    // 메인 스레드 큐
+    private ConcurrentQueue<Action> mainThreadActions = new ConcurrentQueue<Action>();
+
+    // 이벤트: (MessageId, PierID, CraneID, BodyData)
+    public event Action<MessageId, int, int, byte[]> OnPacketReceived;
+
+    private void Awake()
     {
-        public static NetworkManager Instance { get; private set; }
+        if (Instance == null) { Instance = this; DontDestroyOnLoad(gameObject); }
+        else { Destroy(gameObject); }
+    }
 
-        [Header("Config")]
-        public string jsonFileName = "IntegratedMonitoringInterface.json";
+    private void Start()
+    {
+        ConnectToServer();
+    }
 
-        // 여러 개의 연결을 관리할 리스트
-        private List<CraneConnector> connectors = new List<CraneConnector>();
+    private void Update()
+    {
+        while (mainThreadActions.TryDequeue(out var action)) action?.Invoke();
+    }
 
-        // 메인 스레드 큐
-        private ConcurrentQueue<Action> mainThreadActions = new ConcurrentQueue<Action>();
+    private void OnApplicationQuit()
+    {
+        Disconnect();
+    }
 
-        // 외부(CraneController)에서 구독할 이벤트
-        // 매개변수: MessageId(여기선 1로 고정), PierID, CraneID, BodyData
-        public event Action<MessageId, int, int, byte[]> OnPacketReceived;
+    public void ConnectToServer()
+    {
+        if (client != null && client.Connected) return;
+        isRunning = true;
+        receiveThread = new Thread(ReceiveLoop);
+        receiveThread.IsBackground = true;
+        receiveThread.Start();
+    }
 
-        private void Awake()
+    private void Disconnect()
+    {
+        isRunning = false;
+        if (stream != null) stream.Close();
+        if (client != null) client.Close();
+        if (receiveThread != null && receiveThread.IsAlive) receiveThread.Abort();
+    }
+
+    private void ReceiveLoop()
+    {
+        byte[] headerBuffer = new byte[12]; // 헤더 고정 12바이트
+
+        while (isRunning)
         {
-            if (Instance == null) { Instance = this; DontDestroyOnLoad(gameObject); }
-            else { Destroy(gameObject); }
-        }
-
-        private void Start()
-        {
-            LoadConfigAndConnect();
-        }
-
-        private void Update()
-        {
-            // 백그라운드 스레드에서 받은 데이터를 메인 스레드에서 이벤트 발생
-            while (mainThreadActions.TryDequeue(out var action))
-            {
-                action?.Invoke();
-            }
-        }
-
-        private void OnApplicationQuit()
-        {
-            foreach (var connector in connectors)
-            {
-                connector.Stop();
-            }
-        }
-
-        private void LoadConfigAndConnect()
-        {
-            // JSON 파일 경로는 Assets/StreamingAssets 폴더를 권장합니다.
-            string path = Path.Combine(Application.streamingAssetsPath, jsonFileName);
-
-            if (!File.Exists(path))
-            {
-                // 에디터 루트 경로 등 다른 경로 체크 (테스트용)
-                path = Path.Combine(Environment.CurrentDirectory, jsonFileName);
-                if (!File.Exists(path))
-                {
-                    Debug.LogError($"JSON 파일을 찾을 수 없습니다: {path}");
-                    return;
-                }
-            }
-
             try
             {
-                string jsonContent = File.ReadAllText(path);
-
-                // JSON 구조가 "이름": { "routerIP":..., "routerPort":... } 형태임
-                var configData = JsonConvert.DeserializeObject<Dictionary<string, CraneConfigItem>>(jsonContent);
-
-                foreach (var item in configData)
+                if (client == null || !client.Connected || stream == null)
                 {
-                    string craneName = item.Key; // 예: "7_GC5"
-                    string ip = item.Value.routerIP;
-                    int port = item.Value.routerPort;
-
-                    // 설정 파일 내 불필요한 항목 제외
-                    if (craneName == "DB" || craneName == "Test" || craneName.Contains("Unity")) continue;
-
-                    // 이름에서 ID 추출 (규칙에 따라 작성 필요)
-                    (int pId, int cId) = ParseIds(craneName);
-
-                    // 커넥터 생성 및 시작
-                    CraneConnector connector = new CraneConnector(pId, cId, ip, port, craneName, OnDataFromConnector);
-
-                    connector.StartConnection();
-                    connectors.Add(connector);
+                    AttemptConnection();
+                    Thread.Sleep(1000);
+                    continue;
                 }
-                Debug.Log($"총 {connectors.Count}개의 크레인 연결 시도 시작.");
+
+                // 1. 헤더 읽기
+                if (!ReadExactly(stream, headerBuffer, 12))
+                {
+                    client.Close();
+                    continue;
+                }
+
+                // MySocket.cs 파싱 로직 (Little Endian)
+                int msgId = BitConverter.ToInt32(headerBuffer, 0);
+                int pierId = BitConverter.ToInt32(headerBuffer, 4);
+                int craneId = BitConverter.ToInt32(headerBuffer, 8);
+
+                MessageId msgEnum = (MessageId)msgId;
+                byte[] bodyBuffer = null;
+
+                // 2. 바디 읽기
+                if (msgEnum == MessageId.PointCloud) // ID 0
+                {
+                    // [개수(4)][Timestamp(4)] 먼저 읽기
+                    byte[] infoBytes = new byte[8];
+                    if (!ReadExactly(stream, infoBytes, 8)) break;
+
+                    uint numPoints = BitConverter.ToUInt32(infoBytes, 0);
+                    int pointDataSize = (int)numPoints * 24; // (x,y,z, r,g,b) = 24byte
+
+                    bodyBuffer = new byte[8 + pointDataSize];
+                    Array.Copy(infoBytes, 0, bodyBuffer, 0, 8);
+
+                    if (pointDataSize > 0)
+                        if (!ReadExactly(stream, bodyBuffer, pointDataSize, 8)) break;
+                }
+                else if (msgEnum == MessageId.Distance) // ID 3
+                {
+                    byte[] infoBytes = new byte[4];
+                    if (!ReadExactly(stream, infoBytes, 4)) break;
+
+                    uint numDist = BitConverter.ToUInt32(infoBytes, 0);
+                    int dataSize = (int)numDist * 32;
+
+                    bodyBuffer = new byte[4 + dataSize];
+                    Array.Copy(infoBytes, 0, bodyBuffer, 0, 4);
+
+                    if (dataSize > 0)
+                        if (!ReadExactly(stream, bodyBuffer, dataSize, 4)) break;
+                }
+                else if (msgEnum == MessageId.CooperationList) // ID 12
+                {
+                    byte[] infoBytes = new byte[4];
+                    if (!ReadExactly(stream, infoBytes, 4)) break;
+
+                    int fixedSize = 1640; // 164 * 10
+                    bodyBuffer = new byte[4 + fixedSize];
+                    Array.Copy(infoBytes, 0, bodyBuffer, 0, 4);
+
+                    if (!ReadExactly(stream, bodyBuffer, fixedSize, 4)) break;
+                }
+                else
+                {
+                    int bodySize = GetFixedBodySize(msgEnum);
+                    if (bodySize > 0)
+                    {
+                        bodyBuffer = new byte[bodySize];
+                        if (!ReadExactly(stream, bodyBuffer, bodySize)) break;
+                    }
+                }
+
+                // 3. 메인 스레드로 이벤트 전달
+                if (bodyBuffer != null)
+                {
+                    var finalBody = bodyBuffer;
+                    mainThreadActions.Enqueue(() =>
+                    {
+                        OnPacketReceived?.Invoke(msgEnum, pierId, craneId, finalBody);
+                    });
+                }
             }
             catch (Exception e)
             {
-                Debug.LogError($"설정 로드 실패: {e.Message}");
+                Debug.LogWarning($"Socket Error: {e.Message}");
+                if (client != null) client.Close();
             }
-        }
-
-        // 각 커넥터 스레드에서 호출되는 콜백
-        private void OnDataFromConnector(int pId, int cId, byte[] data)
-        {
-            // 메인 스레드 큐에 넣기
-            mainThreadActions.Enqueue(() =>
-            {
-                // MessageId.CraneAttitude (1번)으로 가정하고 이벤트 전송
-                OnPacketReceived?.Invoke(MessageId.CraneAttitude, pId, cId, data);
-            });
-        }
-
-        private (int, int) ParseIds(string name)
-        {
-            int pId = 0;
-            int cId = 0;
-
-            try
-            {
-                string[] parts = name.Split('_');
-                string prefix = parts[0].ToUpper(); // 대문자로 변환 ("y" -> "Y")
-
-                // PierUtility.cs 정의에 따른 매핑 (인덱스 순서)
-                switch (prefix)
-                {
-                    case "7": pId = 0; break;
-                    case "J": pId = 1; break;
-                    case "K": pId = 2; break;
-                    case "HAN": pId = 3; break;
-                    case "6": pId = 4; break;
-                    case "G2": pId = 5; break;
-                    case "G3": pId = 6; break;
-                    case "G4": pId = 7; break;
-                    case "0D": pId = 8; break;
-                    case "Y": pId = 9; break; // Y = ENI = 9번
-                    case "ENI": pId = 9; break;
-                    default:
-                        // 예외 케이스: 숫자로 시작하면 그대로 파싱 시도 (혹시 모를 대비)
-                        int.TryParse(System.Text.RegularExpressions.Regex.Match(prefix, @"\d+").Value, out pId);
-                        break;
-                }
-
-                // --- Crane ID 파싱 ---
-                // 예: JIB5 -> 5, TC1 -> 1
-                if (parts.Length > 1)
-                {
-                    string cranePart = parts[1];
-                    string numberOnly = System.Text.RegularExpressions.Regex.Replace(cranePart, @"[^0-9]", "");
-                    int.TryParse(numberOnly, out cId);
-                }
-            }
-            catch
-            {
-                Debug.LogWarning($"ID 파싱 실패: {name}");
-            }
-
-            return (pId, cId);
         }
     }
 
-    // JSON 파싱용 클래스
-    public class CraneConfigItem
+    private bool ReadExactly(NetworkStream stream, byte[] buffer, int size, int offset = 0)
     {
-        public string routerIP;
-        public int routerPort;
+        int totalRead = 0;
+        while (totalRead < size)
+        {
+            int read = stream.Read(buffer, offset + totalRead, size - totalRead);
+            if (read == 0) return false;
+            totalRead += read;
+        }
+        return true;
+    }
+
+    private void AttemptConnection()
+    {
+        try
+        {
+            if (client != null) client.Close();
+            client = new TcpClient();
+            var result = client.BeginConnect(serverIp, serverPort, null, null);
+            if (result.AsyncWaitHandle.WaitOne(1000, true))
+            {
+                client.EndConnect(result);
+                stream = client.GetStream();
+                Debug.Log($"Connected to {serverIp}:{serverPort}");
+            }
+            else client.Close();
+        }
+        catch { /* Ignored */ }
+    }
+
+    private int GetFixedBodySize(MessageId id)
+    {
+        switch (id)
+        {
+            case MessageId.CraneAttitude: return 120;
+            case MessageId.CraneStatus: return 256;
+            case MessageId.CollisionLog: return 64092;
+            case MessageId.SystemStatus: return 132;
+            case MessageId.OperationHistory: return 5860;
+            case MessageId.PlcInfo: return 172;
+            case MessageId.ReplyLogin: return 36;
+            case MessageId.IndicateLogPlay: return 72;
+            default: return 0;
+        }
     }
 }
